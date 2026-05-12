@@ -1,0 +1,1040 @@
+substitutions:
+  name: "cyd"
+  friendly_name: "CYD"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+  on_boot:
+     - priority: -100
+       then:
+         - wait_until: api.connected
+         - delay: 1s
+         - if:
+             condition:
+               switch.is_on: use_wake_word
+             then:
+               - voice_assistant.start_continuous:
+
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino    
+    version: recommended
+    advanced:
+      minimum_chip_revision: "3.1"
+  cpu_frequency: 240MHz
+
+
+logger:
+
+api:
+  encryption:
+    key: !secret cyd_encryption_key
+
+# Allow Over-The-Air updates
+ota:
+- platform: esphome
+  password: !secret cyd_ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+############################################################
+
+
+font:
+  # small font
+  - file: "gfonts://Roboto" 
+    id: font_s
+    size: 22
+    glyphs: "@!?'\"%()+=,-_.:°0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz"
+
+  # large font
+  - file: "gfonts://Days One" 
+    id: font_l
+    size: 72
+    glyphs: "%:°0123456789CF na"
+
+  # small weather icons
+  - file: "fonts/icons.ttf"
+    id: wx_sym_font2
+    size: 40
+    glyphs: "ABCDEFGHIJLNOQRSTU"
+
+  # large weather icons
+  - file: "fonts/icons.ttf"
+    id: wx_sym_font
+    size: 350
+    glyphs: "ABCDEFGHIJLNOQRSTU"
+
+  # assist icons
+  - file: "fonts/icons.ttf"
+    id: sym_font
+    size: 280
+    glyphs: "@1234Vge"
+
+  # inside weather house pic
+  - file: "fonts/icons.ttf"
+    id: ih_font
+    size: 256
+    glyphs: "?"
+
+
+
+image:
+  # clock screen background
+  - file: "img/back.png"
+    id: img_back
+    type: RGB565
+
+
+color:
+  - id: my_bgcolor
+    red_int: 33
+    green_int: 33
+    blue_int: 44
+ 
+  # weather page background color 
+  - id: my_wxbgcolor
+    red_int: 0
+    green_int: 60
+    blue_int: 255
+
+  - id: hs_bgcolor
+    red_int: 124
+    green_int: 124
+    blue_int: 124
+
+  - id: hs_fgcolor
+    red_int: 70
+    green_int: 70
+    blue_int: 70
+
+  - id: bkg_va_on
+    red_int: 255
+    green_int: 255
+    blue_int: 255
+
+  - id: my_white
+    red_int: 255
+    green_int: 255
+    blue_int: 255
+
+  - id: my_black
+    red_int: 0
+    green_int: 0
+    blue_int: 0
+
+  - id: my_yellow
+    red_int: 255
+    green_int: 255
+    blue_int: 0
+
+  - id: my_blue
+    red_int: 0
+    green_int: 0
+    blue_int: 255
+
+  - id: my_red
+    red_int: 255
+    green_int: 0
+    blue_int: 0
+
+  - id: my_wblue
+    red_int: 51
+    green_int: 161
+    blue_int: 252
+
+  - id: my_wgray
+    red: 33%
+    green: 33%
+    blue: 66%  
+
+  - id: my_gray
+    red: 80%
+    green: 80%
+    blue: 80%
+
+
+
+
+globals:
+
+  # weather icon font character
+  - id: wx_icon    
+    type: std::string
+    restore_value: no
+    initial_value: '"C"'
+
+  # assist icon font character
+  - id: assist_icon    
+    type: std::string
+    restore_value: no
+    initial_value: '"@"'
+
+  # trigger to redraw screen page to reduce load
+  - id: drawpage   
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  # track page display order
+  - id: scx_num   
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  # delay to avoid unwanted page switch
+  - id: page_delay   
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+
+  # Assist phrases
+  - id: tts_msg1
+    type: std::string
+    restore_value: no
+    initial_value: '""'
+
+  - id: tts_msg2
+    type: std::string
+    restore_value: no
+    initial_value: '""'
+
+
+
+
+number:
+  # Control screen brightness during day
+  - platform: template
+    name: "Day Brightness ${friendly_name}"
+    id: day_brightness
+    internal: false
+    optimistic: true
+    min_value: 0
+    max_value: 100
+    restore_value: True
+    initial_value: 100
+    step: 1
+    set_action:
+      - light.turn_on:
+          id: screen_light
+          brightness:  !lambda |-
+              return (x / 100);
+      - globals.set:
+          id: drawpage
+          value: '1'
+      - globals.set:
+          id: page_delay
+          value: '5'
+      - display.page.show: page1
+      - component.update: my_display
+
+  # Control screen brightness at night
+  - platform: template
+    name: "Night Brightness ${friendly_name}"
+    id: night_brightness
+    internal: false
+    optimistic: true
+    min_value: 0
+    max_value: 100
+    restore_value: True
+    initial_value: 40
+    step: 1
+    set_action:
+      - light.turn_on:
+          id: screen_light
+          brightness:  !lambda |-
+              return (x / 100);
+      - globals.set:
+          id: drawpage
+          value: '10'
+      - globals.set:
+          id: page_delay
+          value: '5'
+      - display.page.show: nightpage1
+      - component.update: my_display
+
+
+
+
+
+
+time:
+  - platform: homeassistant
+    id: my_time
+
+
+interval:
+  # change screen colors based on time of day
+  - interval: 30min
+    then:
+      - lambda: |-
+          if ((id(my_time).now().hour > 4 and id(my_time).now().hour < 8) or (id(my_time).now().hour < 22 and id(my_time).now().hour > 19)) {id(my_wxbgcolor) = Color(56, 28, 66);  //dawn dusk
+          } else if (id(my_time).now().hour > 21 or id(my_time).now().hour < 5) {id(my_wxbgcolor) = Color(0, 0, 10);  //night wblue
+          } else if (id(wx_icon) == "J" or id(wx_icon) == "L") {id(my_wxbgcolor) = Color(70, 70, 70);  //rain wgray
+          } else {id(my_wxbgcolor) = Color(0, 60, 255);} //daytime blue
+    
+
+  # rotate screens
+  - interval: 15s
+    then:
+      - if:
+          condition:
+            lambda: 'return id(page_delay) > 0;'
+          then:
+            - lambda: 'id(page_delay)--;'
+            - logger.log: "page delay"
+          else:
+            - logger.log: "page change"
+            - display.page.show: !lambda |-
+                //return id(voicepage);  //uncomment for testing
+
+                id(scx_num) += 1;
+
+                if (id(room_light).state == "Dark") {   
+                  // NIGHT PAGE
+                    id(scx_num) = 0;
+                    id(drawpage) = 10;
+                    return id(nightpage1);
+
+                } else {
+
+                  // DAY PAGES                  
+                  if (id(ha_txt).state.length() > 1) {
+                    id(drawpage) = 1;
+                    return id(notepage);
+                  } else if (id(scx_num) == 1) {
+                    id(drawpage) = 1;
+                    return id(page1);               
+                  } else if (id(scx_num) == 2) {
+                    id(drawpage) = 2;
+                    return id(page2);
+                  } else {
+                    id(scx_num) = 0;
+                    id(drawpage) = 3;
+                    return id(page3);
+                  }
+                }
+            - component.update: my_display
+
+
+text_sensor:
+
+  # Current Weather from HA
+  - platform: homeassistant
+    id: current_wx
+    entity_id: weather.home
+    on_value:
+      - logger.log: "** weather sensor updated **" 
+      - lambda: |-
+          id(wx_icon) = 'F';
+          if(id(current_wx).state.find("storm") != std::string::npos) {id(wx_icon) = "J";}
+          else if(id(current_wx).state.find("partly") != std::string::npos) {id(wx_icon) = "C";}
+          else if(id(current_wx).state.find("snow") != std::string::npos) {id(wx_icon) = "S";}
+          else if(id(current_wx).state.find("cold") != std::string::npos) {id(wx_icon) = "U";}
+          else if(id(current_wx).state.find("wind") != std::string::npos) {id(wx_icon) = "O";}
+          else if(id(current_wx).state.find("night") != std::string::npos) {id(wx_icon) = "B";}
+          else if(id(current_wx).state.find("hot") != std::string::npos) {id(wx_icon) = "T";}
+          else if(id(current_wx).state.find("clear") != std::string::npos) {id(wx_icon) = "A";}
+          else if(id(current_wx).state.find("rain") != std::string::npos) {id(wx_icon) = "H";}
+          else if(id(current_wx).state.find("thunder") != std::string::npos) {id(wx_icon) = "J";}
+          else if(id(current_wx).state.find("mist") != std::string::npos) {id(wx_icon) = "L";}
+          else if(id(current_wx).state.find("drizzle") != std::string::npos) {id(wx_icon) = "L";}
+          else if(id(current_wx).state.find("shower") != std::string::npos) {id(wx_icon) = "I";}
+          else if(id(current_wx).state.find("fog") != std::string::npos) {id(wx_icon) = "D";}
+          else if(id(current_wx).state.find("haze") != std::string::npos) {id(wx_icon) = "N";}
+          else if(id(current_wx).state.find("smoke") != std::string::npos) {id(wx_icon) = "N";}
+          else if(id(current_wx).state.find("cloud") != std::string::npos) {id(wx_icon) = "G";}
+          //else if(id(current_wx).state.find("humid") != std::string::npos) {id(wx_icon) = "Q";}
+          else if(id(current_wx).state.find("sleet") != std::string::npos) {id(wx_icon) = "L";}
+          if(id(current_wx).state == "sunny") {id(wx_icon) = "A";}
+          if(id(current_wx).state.find("clear-night") != std::string::npos) {id(wx_icon) = "B";}
+          //if(id(current_wx).state == "cloudy") {id(wx_icon) = "O";}
+
+
+    # Status of thermostat from HA
+  - platform: homeassistant
+    id: tx_action
+    entity_id: climate.thermostat
+    attribute: hvac_action
+
+    # Send light sensor state to HA
+  - platform: template
+    name: "Room Light Sensor"
+    id: room_light
+    icon: mdi:brightness-4
+    lambda: |-
+       if (id(light_sensor).state > .8) {return {"Dark"};}
+       else {return {"Light"};}
+    internal: False       
+
+    # Create a text helper in HA named va_url and then populate with audio output for play on external media player using external automation
+  - platform: template
+    name: "VA URL"
+    id: va_url        
+    internal: False  
+
+
+    # Create a text helper in HA named ha_note and then pupulate the note with automations as desired
+    # this sensor will pull the note and display on screen
+  - platform: homeassistant
+    id: ha_txt
+    entity_id: input_text.ha_note
+    internal: true
+    on_value:
+      then: 
+        - display.page.show: !lambda |-    
+            if (x.length() > 1 and (id(room_light).state == "Light")) {
+              // show note during daytime if one exists
+              id(drawpage) = 50;
+              return id(notepage);
+            } else {
+              if (id(room_light).state == "Light") {
+                id(drawpage) = 1;
+                return id(page1);
+              } else {
+                id(drawpage) = 10;
+                return id(nightpage1);
+              }
+            } 
+        - component.update: my_display
+
+
+
+
+sensor:
+  # outside temp personal sensor 
+  - platform: homeassistant
+    id: out_temp
+    entity_id: sensor.outside_temperature
+    internal: true
+
+  # outside humidity personal sensor
+  - platform: homeassistant
+    id: out_hum
+    entity_id: sensor.outside_humidity
+    internal: true
+
+  # outside temp using default HA internet temp
+  #- platform: homeassistant
+  #  id: out_temp
+  #  entity_id: weather.home
+  #  attribute: temperature
+
+  # outside temp using default HA internet temp
+  #- platform: homeassistant
+  #  id: out_hum
+  #  entity_id: weather.home
+  #  attribute: humidity
+    
+  # inside temp sensor from HA
+  - platform: homeassistant
+    id: in_temp
+    entity_id: sensor.thermostat_current_temperature
+    internal: true
+  
+  # inside humidity sensor from HA
+  - platform: homeassistant
+    id: in_hum
+    entity_id: sensor.thermostat_current_humidity
+    internal: true
+
+  # thermostat set temp from HA
+  - platform: homeassistant
+    id: tx_stat
+    entity_id: climate.thermostat
+    attribute: temperature
+    internal: true
+
+
+  # internal light sensor reading from ESP
+  - platform: adc
+    pin: GPIO34
+    id: light_sensor
+    update_interval: 2000ms
+    on_value_range:
+      - below: 0.8   
+        then:
+          - light.turn_on:
+              id: screen_light
+              brightness:  !lambda |-
+                 if(id(page_delay) > 0) {
+                  id(drawpage)=0;
+                 } else {
+                  id(drawpage)=1;
+                 }
+                 return (id(day_brightness).state / 100);
+          - display.page.show: page1
+          - component.update: my_display
+          - text_sensor.template.publish:
+              id: room_light
+              state: "Light"
+      - above: 0.8     
+        then:
+          - light.turn_on:
+              id: screen_light
+              brightness:  !lambda |-
+                 if(id(page_delay) > 0) {
+                  id(drawpage)=0;
+                 } else {
+                  id(drawpage)=10;
+                 }              
+                 return (id(night_brightness).state / 100);
+          - display.page.show: nightpage1
+          - component.update: my_display
+          - text_sensor.template.publish:
+             id: room_light
+             state: "Dark"
+
+
+
+output:
+  # display screen light
+  - platform: ledc
+    pin: GPIO21
+    id: former_led_pin
+
+  # night light RGB color and brightness
+  - platform: ledc
+    id: output_red
+    pin: GPIO4
+    inverted: true
+  - platform: ledc
+    id: output_green
+    pin: GPIO16
+    inverted: true
+  - platform: ledc
+    id: output_blue
+    pin: GPIO17
+    inverted: true
+
+
+light:
+  # display screen light control to HA
+  - platform: monochromatic
+    output: former_led_pin
+    name: "Screen Light"
+    id: screen_light
+    restore_mode: ALWAYS_ON
+
+  # night light control to HA
+  - platform: rgb
+    name: "Night Lite"
+    id: rear_led
+    red: output_red
+    green: output_green
+    blue: output_blue
+    restore_mode: ALWAYS_OFF
+
+    effects:
+      - pulse:
+      - pulse:
+          name: "Fast Pulse"
+          transition_length: 0.45s
+          update_interval: 0.45s
+          min_brightness: 0%
+          max_brightness: 100%
+          
+      - pulse:
+          name: "Slow Pulse"
+          transition_length: 2.0s
+          update_interval: 2.0s
+          min_brightness: 0%
+          max_brightness: 100%
+
+      - pulse:
+          name: "V Fast Pulse"
+          transition_length: 0.25s
+          update_interval: 0.25s
+          min_brightness: 0%
+          max_brightness: 100%
+
+      # Random color and interval good for music
+      - random:  
+      - random:
+          name: "Random X"
+          transition_length: 3s
+          update_interval: 4s
+
+spi:
+  - id: lcd
+    clk_pin: GPIO14
+    mosi_pin: GPIO13
+    miso_pin: GPIO12
+    
+
+i2s_audio:
+  - id: mic_i2s
+    i2s_lrclk_pin: GPIO3
+    i2s_bclk_pin: GPIO1
+
+#  - id: spkr_i2s
+#    i2s_lrclk_pin:
+#        number: GPIO25
+        #allow_other_uses: true     
+#    i2s_bclk_pin: GPIO26
+
+
+#speaker:
+#  - platform: i2s_audio
+#    id: int_speaker
+#    i2s_audio_id: spk_i2s
+#    dac_type: internal
+#    mode: stereo
+
+#media_player:
+#  - platform: i2s_audio
+#    i2s_audio_id: spkr_i2s
+#    name: "${name} Media Player"
+#    id: va_media_player
+#    dac_type: internal 
+#    #dac_type: external
+#    #i2s_dout_pin: GPIO16
+#    mode: left
+
+
+
+microphone:  
+  - platform: i2s_audio
+    id: mic
+    i2s_audio_id: mic_i2s
+    adc_type: external
+    i2s_din_pin: GPIO27
+    channel: left
+    pdm: False
+
+
+voice_assistant:
+  id: assist
+  microphone: mic
+ # media_player: va_media_player
+  use_wake_word: true
+  noise_suppression_level: 2
+  auto_gain: 31dBFS
+  volume_multiplier: 2.0
+
+  on_wake_word_detected:     
+
+    - lambda: |-
+       id(tts_msg2)= "Hi.";
+       id(tts_msg1)= "How may I assist?";
+       id(drawpage)= 20;
+       id(page_delay)= 5;       
+    - logger.log: "** WAKE WORD DETECTED - Show Page**"    
+    - display.page.show: voicepage
+    - component.update: my_display
+ #   - light.turn_on:
+ #       id: screen_light
+ #       brightness:  !lambda |-
+ #           return (id(day_brightness).state / 100);
+    - light.turn_on:
+        id: rear_led           
+        red: 0%
+        green: 100%
+        blue: 100%
+        brightness: 100%
+        effect: "Fast Pulse"
+
+
+
+  on_stt_end:
+    - logger.log: "** STT END **"
+    - lambda: |-
+        id(tts_msg2)= x;
+    - light.turn_off:
+        id: rear_led 
+        
+
+  on_tts_start:
+    - logger.log: "** TTS START **"   
+
+    - logger.log:
+        format: "DEBUG: TTS - %s"
+        args:
+          - id(tts_msg2)
+
+    - display.page.show: !lambda |-
+        id(tts_msg1) = x;        
+        id(page_delay) = 2;
+
+
+
+
+        //Set Assist Icon
+        if((x == "Turned on the switch") or (x == "Turned off the switch")) {id(assist_icon) = "2";}
+        else if((x == "Turned on the light") or (x == "Turned off the light") or (x == "Brightness set") or (x == "Color set")) {id(assist_icon) = "1";}
+        else if((x == "Turned on the fan") or (x == "Turned off the fan") or (x == "Turned on the fans") or (x == "Turned off the fans")) {id(assist_icon) = "3";}
+        else if((x.find("media_player") != std::string::npos) or (x == "volume set")) {id(assist_icon) = "4";}
+        else {id(assist_icon) = "@";}
+
+        //Choose Assist Screen
+
+        if(x.find("°") != std::string::npos) {
+          id(drawpage)= 25; 
+          return id(assistwx);  
+        } else if (id(tts_msg2).find("time") != std::string::npos) {
+          id(drawpage) = 1;  
+          return id(page1);
+        } else if (id(tts_msg2).find("weather") != std::string::npos) {
+          id(drawpage) = 3;  
+          return id(page3);
+        } else if (id(tts_msg2).find("forecast") != std::string::npos) {
+          id(drawpage) = 3;  
+          return id(page3);          
+        } else if (id(tts_msg2).find("joke") != std::string::npos){
+          id(drawpage) = 26;  
+          return id(assisthaha);          
+        } else if ((x.find(" on ") != std::string::npos) or (x == "Brightness set")) {
+          id(bkg_va_on) = Color(255, 255, 255);
+          id(drawpage) = 22; 
+          return id(assistonpage); 
+        } else if (x == "Color set") {
+          id(drawpage) = 22; 
+          if (id(tts_msg2).find("red") != std::string::npos) {id(bkg_va_on) = Color(255, 0, 0);}
+          else if (id(tts_msg2).find("green") != std::string::npos) {id(bkg_va_on) = Color(0, 255, 0);}
+          else if (id(tts_msg2).find("blue") != std::string::npos) {id(bkg_va_on) = Color(0, 0, 255);}
+          else if (id(tts_msg2).find("purple") != std::string::npos) {id(bkg_va_on) = Color(200, 0, 255);}
+          else if (id(tts_msg2).find("orange") != std::string::npos) {id(bkg_va_on) = Color(255, 128, 0);}
+          else if (id(tts_msg2).find("yellow") != std::string::npos) {id(bkg_va_on) = Color(255, 255, 158);}
+          else {id(bkg_va_on) = Color(255, 255, 255);}
+          return id(assistonpage);           
+          
+        } else if (x.find(" off ") != std::string::npos) {
+          id(drawpage) = 23;  
+          return id(assistoffpage);
+        } else if ((x == "I'm good. How are you?") or (x == "That's not funny.") or (x == "You're quite welcome.")) {
+          id(drawpage) = 20;  
+          return id(voicepage);                    
+        } else if (x.find(" not aware ") != std::string::npos) {
+          id(drawpage) = 24;
+          return id(assisterr);          
+        } else if (x.find(" understand ") != std::string::npos) {
+          id(drawpage) = 24;
+          return id(assisterr);
+        } else {
+          if (id(tts_msg1).length() > 35) {id(tts_msg1) = " ";}
+          id(drawpage) = 21;
+          return id(assistpage);
+        }
+    - component.update: my_display
+
+    - light.turn_on:
+        id: rear_led           
+        red: 0%
+        green: 100%
+        blue: 100%
+        brightness: 100%
+        effect: "Fast Pulse"
+
+
+
+  on_tts_end:
+    - text_sensor.template.publish:
+        id: va_url
+        state:  !lambda |-
+          std::string Nurl = x + "#";
+          Nurl += std::to_string(rand() % 1000);
+          return Nurl;
+    - light.turn_off:
+        id: rear_led 
+
+  on_intent_start:
+    - logger.log: "** INTENT START **"
+   
+  on_intent_end:
+    - logger.log: "** INTENT END **"
+
+
+  on_error:
+    - logger.log: "** Assist Error**"   
+    - display.page.show: !lambda |-
+        id(page_delay) = 2;
+        id(tts_msg1) = message;
+        id(tts_msg2) = "WARNING";
+        if(message == "No text recognized") {
+          id(drawpage) = 1;
+          return id(page1);
+        } else {
+          id(drawpage) = 24;
+          return id(assisterr);
+        }
+    - component.update: my_display
+    - if:
+        condition:
+          not:
+            - voice_assistant.is_running
+            - switch.is_off: use_wake_word
+        then:
+          - voice_assistant.start_continuous
+    - light.turn_on:
+        id: rear_led
+        red: 100%
+        green: 0%
+        blue: 0%
+        brightness: 100%
+        effect: "V Fast Pulse"
+    - delay: 3s
+    - light.turn_off:
+        id: rear_led 
+
+
+  on_client_connected:
+    - if:
+        condition:
+          switch.is_on: use_wake_word
+        then:
+          - voice_assistant.start_continuous:
+    - light.turn_on:
+        id: rear_led
+        red: 0%
+        green: 0%
+        blue: 100%
+        brightness: 100%
+        effect: "Fast Pulse"
+    - delay: 3s
+    - light.turn_off:
+        id: rear_led 
+          
+  on_client_disconnected:
+    - if:
+        condition:
+          switch.is_on: use_wake_word
+        then:
+          - voice_assistant.stop:
+    - light.turn_on:
+        id: rear_led
+        red: 100%
+        green: 0%
+        blue: 0%
+        brightness: 100%
+        effect: "Fast Pulse"
+    - delay: 3s
+    - light.turn_off:
+        id: rear_led 
+
+
+
+
+
+switch:
+  - platform: restart
+    name: "Restart $friendly_name"
+
+  - platform: template
+    name: Use wake word ${friendly_name}
+    id: use_wake_word
+    optimistic: true
+    internal: False
+    restore_mode: RESTORE_DEFAULT_ON  
+    entity_category: config
+    on_turn_on:
+      - lambda: id(assist).set_use_wake_word(true);
+      - if:
+          condition:
+            not:
+              - voice_assistant.is_running
+          then:
+            - voice_assistant.start_continuous
+    on_turn_off:
+      - voice_assistant.stop
+      - lambda: id(assist).set_use_wake_word(false);
+
+
+
+display:
+  - platform: ili9xxx
+    id: my_display
+    model: ILI9342
+    spi_id: lcd
+    dc_pin: 2
+    cs_pin: 15
+    dimensions: 320x240
+    auto_clear_enabled: False
+    color_order: rgb
+    invert_colors: false
+    color_palette: 8BIT #REQUIRED 
+
+    
+
+    pages:
+      - id: page1
+      # Clock Page
+        lambda: |-
+          if (id(drawpage) == 1) {
+            id(drawpage) = 0;
+            it.image(0, 0, id(img_back));            
+            it.strftime(156,116,id(font_l), id(my_blue), TextAlign::CENTER,"%I:%M", id(my_time).now());
+            it.strftime(164,124,id(font_l), id(my_wgray), TextAlign::CENTER,"%I:%M", id(my_time).now());
+            it.strftime(160,120,id(font_l), id(my_white), TextAlign::CENTER,"%I:%M", id(my_time).now());          
+            it.strftime(160,32,id(font_s), id(my_white), TextAlign::CENTER, "%A, %B %e", id(my_time).now()); 
+            it.printf(44,205,id(font_s), id(my_white), TextAlign::TOP_LEFT,"%.f°F", id(out_temp).state);
+            it.printf(5,200,id(wx_sym_font2), id(my_white), TextAlign::TOP_LEFT,"%s", id(wx_icon).c_str());
+          }
+
+      - id: page2
+      # Inside Page
+        lambda: |-           
+          if (id(drawpage) == 2) {
+            id(drawpage) = 0;
+            it.filled_rectangle(0,0,320,240,id(hs_bgcolor));    
+            it.printf(28,130,id(ih_font), id(hs_fgcolor), TextAlign::CENTER,"?");
+            it.strftime(15,9,id(font_s), id(my_white),"%I:%M", id(my_time).now());
+            it.printf(206,40,id(font_s), id(my_white), TextAlign::CENTER,"Inside");
+            it.printf(204,99,id(font_l), id(my_black), TextAlign::CENTER,"%.f°F", id(in_temp).state);
+            it.printf(200,95,id(font_l), id(my_yellow), TextAlign::CENTER,"%.f°F", id(in_temp).state);
+            it.printf(222,145,id(font_s), id(my_white), TextAlign::TOP_RIGHT,"%.f%%", id(in_hum).state);
+            it.printf(215,143,id(wx_sym_font2), id(my_white), TextAlign::TOP_LEFT,"Q");
+            it.printf(206,205,id(font_s), id(my_gray), TextAlign::CENTER, "%s - %.f°F", id(tx_action).state.c_str(), id(tx_stat).state);
+          }
+
+      - id: page3
+      # Weather Page
+        lambda: |-
+          if (id(drawpage) == 3) {
+            id(drawpage) = 0;
+            it.filled_rectangle(0,0,320,240,id(my_wxbgcolor));
+            if (id(wx_icon) == "A") {it.printf(222,133,id(wx_sym_font), id(my_yellow), TextAlign::CENTER,"%s", id(wx_icon).c_str());}
+            else {it.printf(222,133,id(wx_sym_font), id(my_wblue), TextAlign::CENTER,"%s", id(wx_icon).c_str());}
+            it.printf(146,157,id(font_l), id(my_black), TextAlign::CENTER,"%.f°F", id(out_temp).state);
+            it.printf(142,153,id(font_l), id(my_white), TextAlign::CENTER,"%.f°F", id(out_temp).state);          
+            it.printf(17,17,id(font_s), id(my_black), TextAlign::TOP_LEFT,"%s", id(current_wx).state.c_str());
+            it.printf(15,15,id(font_s), id(my_white), TextAlign::TOP_LEFT,"%s", id(current_wx).state.c_str());
+            it.strftime(15,210,id(font_s), id(my_white),"%I:%M", id(my_time).now());
+            it.printf(320,208,id(wx_sym_font2), id(my_wblue), TextAlign::TOP_RIGHT,"Q");  
+            it.printf(285,210,id(font_s), id(my_white), TextAlign::TOP_RIGHT,"%.f%%", id(out_hum).state);
+          }
+
+      - id: nightpage1
+      # Night Page Clock
+        lambda: |-
+          if (id(drawpage) == 10) {
+            id(drawpage) = 0;        
+            it.filled_rectangle(0,0,320,240,id(my_black));           
+            it.strftime(162,120,id(font_l), id(my_red), TextAlign::CENTER,"%I:%M", id(my_time).now());
+
+            it.printf(44,205,id(font_s), id(my_red), TextAlign::TOP_LEFT,"%.f°F", id(out_temp).state);
+            it.printf(5,200,id(wx_sym_font2), id(my_red), TextAlign::TOP_LEFT,"%s", id(wx_icon).c_str());
+
+            if (id(ha_txt).state.length() > 1) {it.printf(160,32,id(font_s), id(my_red), TextAlign::CENTER,"%s", id(ha_txt).state.c_str());}
+            else {it.strftime(160,32,id(font_s), id(my_red), TextAlign::CENTER, "%A, %B %e", id(my_time).now());}
+          }  
+
+
+
+      - id: voicepage
+      # Assist Intro Page
+        lambda: |-
+          if (id(drawpage) == 20) {
+            id(drawpage) = 0;
+            it.filled_rectangle(0,0,320,240,id(my_white));        
+            it.printf(160,110,id(sym_font), id(my_wblue), TextAlign::CENTER,"e"); 
+            //it.printf(161,20,id(font_s), id(my_black), TextAlign::CENTER,"%s", id(tts_msg2).c_str());
+            //it.printf(160,20,id(font_s), id(my_wblue), TextAlign::CENTER,"%s", id(tts_msg2).c_str());
+            it.printf(161,220,id(font_s), id(my_wblue), TextAlign::CENTER,"%s", id(tts_msg1).c_str());
+            it.printf(160,220,id(font_s), id(my_wblue), TextAlign::CENTER,"%s", id(tts_msg1).c_str());
+          }
+
+      - id: assistpage
+      # assist Page
+        lambda: |-
+          if (id(drawpage) == 21) {
+            id(drawpage) = 0;
+            it.filled_rectangle(0,0,320,240,id(my_wblue)); 
+            it.printf(160,90,id(sym_font), id(my_white), TextAlign::CENTER,"@");
+            //it.printf(161,20,id(font_s), id(my_black), TextAlign::CENTER,"%s", id(tts_msg2).c_str());
+            it.printf(160,20,id(font_s), id(my_white), TextAlign::CENTER,"%s", id(tts_msg2).c_str());
+            //it.printf(161,220,id(font_s), id(my_black), TextAlign::CENTER,"%s", id(tts_msg1).c_str());
+            it.printf(160,220,id(font_s), id(my_white), TextAlign::CENTER,"%s", id(tts_msg1).c_str());
+          }
+
+
+      - id: assistonpage
+      # assist Page - turn on 
+        lambda: |-
+          if (id(drawpage) == 22) {
+            id(drawpage) = 0;
+            it.filled_rectangle(0,0,320,240,Color(255, 255, 0)); 
+            it.printf(163,93,id(sym_font), id(my_black), TextAlign::CENTER,"%s", id(assist_icon).c_str());
+            it.printf(160,90,id(sym_font), id(bkg_va_on), TextAlign::CENTER,"%s", id(assist_icon).c_str());
+            it.printf(160,20,id(font_s), id(my_black), TextAlign::CENTER,"%s", id(tts_msg2).c_str());
+            it.printf(160,220,id(font_s), id(my_black), TextAlign::CENTER,"%s", id(tts_msg1).c_str());
+          }
+
+
+      - id: assistoffpage
+      # assist Page - turn off
+        lambda: |-
+          if (id(drawpage) == 23) {
+            id(drawpage) = 0;
+            it.filled_rectangle(0,0,320,240,id(my_wgray)); 
+            it.printf(163,93,id(sym_font), id(my_black), TextAlign::CENTER,"%s", id(assist_icon).c_str());
+            it.printf(160,90,id(sym_font), id(my_gray), TextAlign::CENTER,"%s", id(assist_icon).c_str());
+
+            it.printf(162,22,id(font_s), id(my_black), TextAlign::CENTER,"%s", id(tts_msg2).c_str());
+            it.printf(160,20,id(font_s), id(my_white), TextAlign::CENTER,"%s", id(tts_msg2).c_str());            
+            it.printf(162,222,id(font_s), id(my_black), TextAlign::CENTER,"%s", id(tts_msg1).c_str());
+            it.printf(160,220,id(font_s), id(my_white), TextAlign::CENTER,"%s", id(tts_msg1).c_str());
+          }
+
+
+      - id: assisterr
+      # assist Page - Error 
+        lambda: |-
+          if (id(drawpage) == 24) {
+            id(drawpage) = 0;
+            it.filled_rectangle(0,0,320,240,id(my_red)); 
+            it.printf(164,93,id(sym_font), id(my_black), TextAlign::CENTER,"@");
+            it.printf(160,90,id(sym_font), id(my_white), TextAlign::CENTER,"@");
+
+            it.printf(162,22,id(font_s), id(my_black), TextAlign::CENTER,"%s", id(tts_msg2).c_str());
+            it.printf(160,20,id(font_s), id(my_white), TextAlign::CENTER,"%s", id(tts_msg2).c_str());            
+            it.printf(162,222,id(font_s), id(my_black), TextAlign::CENTER,"%s", id(tts_msg1).c_str());
+            it.printf(160,220,id(font_s), id(my_white), TextAlign::CENTER,"%s", id(tts_msg1).c_str());
+          }
+
+
+
+      - id: assistwx
+      # assist Page - temperature
+        lambda: |-
+          if (id(drawpage) == 25) {
+            id(drawpage) = 0;
+            it.filled_rectangle(0,0,320,240,id(my_blue)); 
+            
+            it.printf(174,144,id(sym_font), id(my_black), TextAlign::CENTER,"V");
+            it.printf(170,140,id(sym_font), id(my_white), TextAlign::CENTER,"V");
+
+            it.printf(162,22,id(font_s), id(my_black), TextAlign::CENTER,"%s", id(tts_msg2).c_str());
+            it.printf(160,20,id(font_s), id(my_white), TextAlign::CENTER,"%s", id(tts_msg2).c_str());            
+            it.printf(162,222,id(font_s), id(my_black), TextAlign::CENTER,"%s", id(tts_msg1).c_str());
+            it.printf(160,220,id(font_s), id(my_white), TextAlign::CENTER,"%s", id(tts_msg1).c_str());
+          }
+
+
+      - id: assisthaha
+      # assist Page - joke
+        lambda: |-
+          if (id(drawpage) == 26) {
+            id(drawpage) = 0;
+            it.filled_rectangle(0,0,320,240,Color(30, 30, 30)); 
+            it.filled_circle(120, 120, 130, Color(120, 120, 140));
+            it.printf(170,160,id(sym_font), id(my_black), TextAlign::CENTER,"g");
+          }
+
+
+
+      - id: notepage
+      # Notice Page
+        lambda: |-
+          if (id(drawpage) == 50) {
+            id(drawpage) = 0;
+            it.filled_rectangle(0,0,320,240,id(my_yellow)); 
+            it.printf(160,120,id(font_s), id(my_black), TextAlign::CENTER,"%s", id(ha_txt).state.c_str());
+            it.printf(161,120,id(font_s), id(my_black), TextAlign::CENTER,"%s", id(ha_txt).state.c_str());
+          }
